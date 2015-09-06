@@ -2,10 +2,24 @@
 # -*- coding: utf-8 -*-
 
 """Read audio tags from local files.
-Print a list of track number, artist, song title and duration,
+Print track number, artist, song title and duration for each file,
 suitable for pasting into Musicbrainz’ track parser.
 
-Copyright (C) 2015 Rainer Schwarzbach <rainer@blackstream.de>
+Copyright (C) 2015 Rainer Schwarzbach
+                   <blackstream-x@users.noreply.github.com>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import argparse
@@ -13,105 +27,204 @@ import glob
 import logging
 import os
 import re
+import six
 import sys
 import taglib
 
 
-__version__ = '0.1'
+__version__ = '0.2'
 
+
+# Disable some pylint messages
+# pylint: disable=logging-format-interpolation, superfluous-parens
+
+
+#
+# Constants
+#
 
 ALL_FILES = '*.*'
+ANY_NUMBER = '*'
+ELLIPSIS = u'…'
 EMPTY = ''
-FS_AUDIO_LENGTH = u'{0:02d}:{1:02d}'
-FS_TRACK = u'{0[TRACKNUMBER]}. {0[ARTIST]} – {0[TITLE]} ({0[length]})'
+FILE_ARGUMENT_HELP = 'Files or directories to read audio tags from'
+FILE_ARGUMENT_NAME = 'File or Directory'
+FIRST_INDEX = 0
+IN_SQUARE_BRACKETS = r'[\1]'
 LOG_MESSAGE_FORMAT = '%(levelname)-8s | %(message)s'
-MISSING_TAG = u'(…)'
-MSG_FILE_TAGS_MISSING = 'File {0!r}: Tags missing {1}'
-PRX_TRACKS_TOTAL = re.compile(r'/.*')
+MISSING_TAG_PLACEHOLDER = u'({0})'.format(ELLIPSIS)
+MSG_HIT_ENTER = '\nPlease hit enter to close the window: '
+MSG_TAGS_MISSING = 'File {0!r}: Tags missing {1}'
+MSG_UNSUPPORTED_TYPE = 'File {0!r}: File type probably not supported'
+NAUTILUS_SCRIPT_SELECTED_FILE_PATHS = 'NAUTILUS_SCRIPT_SELECTED_FILE_PATHS'
+PROGRAM_DESCRIPTION = ('Read audio tags from local files and print them'
+                       ' as a tracklist suitable to be copied into the'
+                       ' Musicbrainz track parser')
+RC_OK = 0
+SECONDS_PER_MINUTE = 60
 SEPARATOR = u' / '
+UTF8 = 'utf-8'
+
+#
+# Precompiled regular expressions
+PRX_GLOB_MAGIC = re.compile('([*?[])')
+PRX_TRACKS_TOTAL = re.compile(r'/.*')
+
+#
+# Tag names as provided by the taglib module
 TAG_TRACK_NUMBER = 'TRACKNUMBER'
 TAG_ARTIST = 'ARTIST'
 TAG_TITLE = 'TITLE'
 TAG_LENGTH = 'length'
 REQUIRED_TAGS = (TAG_TRACK_NUMBER, TAG_ARTIST, TAG_TITLE)
 
+#
+# Format strings
+FS_0 = u'{0}'
+FS_AUDIO_LENGTH = u'{0:02d}:{1:02d}'
+FS_DICT_PLACEHOLDER = u'{{0[{0}]}}'
+FS_TRACK = u'{0}. {1} – {2} ({3})'.format(
+    FS_DICT_PLACEHOLDER.format(TAG_TRACK_NUMBER),
+    FS_DICT_PLACEHOLDER.format(TAG_ARTIST),
+    FS_DICT_PLACEHOLDER.format(TAG_TITLE),
+    FS_DICT_PLACEHOLDER.format(TAG_LENGTH))
+
+
+#
+# Function definitions
+#
+
 
 def audio_length(seconds):
-    """Return audio length in seconds as a mm:ss string"""
-    _minutes, _seconds = divmod(int(seconds), 60)
+    """Return audio length in mm:ss format"""
+    _minutes, _seconds = divmod(int(seconds), SECONDS_PER_MINUTE)
     return FS_AUDIO_LENGTH.format(_minutes, _seconds)
 
 
-def output_directory_tracklist(given_directory):
+def escape_for_glob(pathname):
+    """Escape all special characters in the given path.
+    Adapted from python 3.4 source:
+    <https://hg.python.org/cpython/file/3.4/Lib/glob.py>
+    """
+    # Escaping is done by wrapping any of "*?[" between square brackets.
+    # Metacharacters do not work in the drive part and shouldn't be escaped.
+    drive, pathname = os.path.splitdrive(pathname)
+    pathname = PRX_GLOB_MAGIC.sub(IN_SQUARE_BRACKETS, pathname)
+    return drive + pathname
+
+
+def print_directory_tracklist(given_directory):
     """Output a tracklist from all files in the given directory.
     Files will be sorted by name before.
     """
-    for single_file in sorted(glob.glob(os.path.join(given_directory,
-                                                     ALL_FILES))):
-        output_file_tracklist(single_file)
+    given_directory = to_unicode(given_directory)
+    for single_file in sorted(glob.glob(os.path.join(
+            escape_for_glob(given_directory), ALL_FILES))):
+        print_file_tracklist(single_file)
     #
 
 
-def output_file_tracklist(given_file):
+def print_file_tracklist(given_file):
     """Output the file’s audio data as a tracklist line"""
+    given_file = to_unicode(given_file)
+    shortened_filename = \
+        os.path.join(ELLIPSIS, os.path.basename(given_file))
     try:
-        current_file = taglib.File(given_file)
+        audio_data = taglib.File(given_file)
     except OSError as os_error:
-        # File types the taglib cannot handle will produce an OSError
+        # File types the taglib cannot handle will produce an OSError.
+        # Simply log the error and ignore these files.
         logging.error(os_error)
+        if os.path.isfile(given_file):
+            logging.info(MSG_UNSUPPORTED_TYPE.format(shortened_filename))
+        #
     else:
-        current_tags = {}
+        # Check for missing tags.
+        # If tags are missing, log a warning message
+        # and use the defined placeholder for the missing tags
+        output_tags = {}
         missing_tags = []
-        for tag in REQUIRED_TAGS:
+        for single_tag in REQUIRED_TAGS:
             try:
-                current_tags[tag] = current_file.tags[tag][:]
+                output_tags[single_tag] = audio_data.tags[single_tag][:]
             except KeyError:
-                current_tags[tag] = MISSING_TAG
-                missing_tags.append(tag)
+                output_tags[single_tag] = MISSING_TAG_PLACEHOLDER
+                missing_tags.append(single_tag)
             else:
-                if tag == TAG_TRACK_NUMBER:
-                    current_tags[tag] = PRX_TRACKS_TOTAL.sub(
-                        EMPTY, current_tags[tag][0])
+                if single_tag == TAG_TRACK_NUMBER:
+                    output_tags[single_tag] = PRX_TRACKS_TOTAL.sub(
+                        EMPTY, output_tags[single_tag][FIRST_INDEX])
                 else:
-                    current_tags[tag] = SEPARATOR.join(current_tags[tag])
+                    output_tags[single_tag] = SEPARATOR.join(
+                        output_tags[single_tag])
                 #
             #
         try:
-            current_tags[TAG_LENGTH] = audio_length(current_file.length)
+            output_tags[TAG_LENGTH] = audio_length(audio_data.length)
         except AttributeError:
-            current_tags[TAG_LENGTH] = u'…'
+            output_tags[TAG_LENGTH] = ELLIPSIS
             missing_tags.append(TAG_LENGTH)
         if missing_tags:
-            logging.warning(MSG_FILE_TAGS_MISSING.format(given_file,
-                                                         missing_tags))
-        print(FS_TRACK.format(current_tags))
+            logging.warning(MSG_TAGS_MISSING.format(shortened_filename,
+                                                    missing_tags))
+        print(FS_TRACK.format(output_tags))
     #
+
+
+def to_unicode(given_object, encoding=UTF8):
+    """Transform any given object to unicode"""
+    if isinstance(given_object, six.binary_type):
+        return given_object.decode(encoding)
+    elif isinstance(given_object, six.text_type):
+        return given_object
+    else:
+        return six.text_type(given_object)
+    #
+
+
+#
+# Main script
+#
 
 
 if __name__ == '__main__':
+    # Process the specified files or directories
     # If no argument was given, process the current directory.
-    # Else process the specified files or directories
     logging.basicConfig(format=LOG_MESSAGE_FORMAT, level=logging.DEBUG)
-    ARGUMENT_PARSER = argparse.ArgumentParser(
-        description=u'Read audio tags from local files and print them'
-        ' as a tracklist suitable for the Musicbrainz track parser')
-    ARGUMENT_PARSER.add_argument('file_or_directory',
-                                 help='Files or directories to read'
-                                 ' audio tags from',
-                                 nargs='*')
-    ARGUMENTS_LIST = ARGUMENT_PARSER.parse_args().file_or_directory
+    ARGUMENT_PARSER = \
+        argparse.ArgumentParser(description=PROGRAM_DESCRIPTION)
+    ARGUMENT_PARSER.add_argument(FILE_ARGUMENT_NAME,
+                                 help=FILE_ARGUMENT_HELP,
+                                 nargs=ANY_NUMBER)
+    ARGUMENTS_LIST = getattr(ARGUMENT_PARSER.parse_args(),
+                             FILE_ARGUMENT_NAME)
+    try:
+        # Nautilus script integration.
+        # If the script gets called via Nautilus, add the selected paths
+        # as if they were given as command line arguments.
+        ARGUMENTS_LIST.extend(
+            argument for argument in
+            os.environ[NAUTILUS_SCRIPT_SELECTED_FILE_PATHS].splitlines()
+            if argument)
+    except KeyError:
+        BEFORE_EXIT_MESSAGE = EMPTY
+    else:
+        BEFORE_EXIT_MESSAGE = MSG_HIT_ENTER
+    #
     if ARGUMENTS_LIST:
         for argument in ARGUMENTS_LIST:
             if os.path.isdir(argument):
-                output_directory_tracklist(argument)
+                print_directory_tracklist(argument)
             else:
-                output_file_tracklist(argument)
+                print_file_tracklist(argument)
             #
         #
     else:
-        output_directory_tracklist(os.getcwd())
+        print_directory_tracklist(os.getcwd())
     #
-    sys.exit(0)
+    if BEFORE_EXIT_MESSAGE:
+        six.moves.input(BEFORE_EXIT_MESSAGE)
+    sys.exit(RC_OK)
 
 
 # vim: fileencoding=utf-8 ts=4 sts=4 sw=4 expandtab autoindent syntax=python:
