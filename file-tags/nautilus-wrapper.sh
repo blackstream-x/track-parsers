@@ -23,9 +23,14 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+TERMINAL_TITLE="Tracklist"
+PYTHON_EXECUTABLE="$(which python3)"
+SCRIPT_DIRECTORY="$(dirname "$(readlink -f "$0")")"
+WRAPPED_SCRIPT="read_tags.py"
+
 /usr/bin/gnome-terminal \
-    --title="Tracklist" \
-    -e "/usr/bin/python3 /home/rainer/skripte/musik/read_tags.py"
+    --title="${TERMINAL_TITLE}" \
+    -e "${PYTHON_EXECUTABLE} ${SCRIPT_DIRECTORY}/${WRAPPED_SCRIPT}"
 
 # vim: fileencoding=utf-8 ts=4 sts=4 sw=4 expandtab autoindent syntax=sh:
 
