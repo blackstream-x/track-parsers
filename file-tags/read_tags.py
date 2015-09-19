@@ -32,7 +32,7 @@ import sys
 import taglib
 
 
-__version__ = '0.2'
+__version__ = '0.3'
 
 
 # Disable some pylint messages
@@ -56,7 +56,8 @@ MISSING_TAG_PLACEHOLDER = u'({0})'.format(ELLIPSIS)
 MSG_HIT_ENTER = '\nPlease hit enter to close the window: '
 MSG_TAGS_MISSING = 'File {0!r}: Tags missing {1}'
 MSG_UNSUPPORTED_TYPE = 'File {0!r}: File type probably not supported'
-NAUTILUS_SCRIPT_SELECTED_FILE_PATHS = 'NAUTILUS_SCRIPT_SELECTED_FILE_PATHS'
+NAUTILUS_SCRIPT_SELECTED_FILE_PATHS = \
+    'NAUTILUS_SCRIPT_SELECTED_FILE_PATHS'
 PROGRAM_DESCRIPTION = ('Read audio tags from local files and print them'
                        ' as a tracklist suitable to be copied into the'
                        ' Musicbrainz track parser')
@@ -107,7 +108,8 @@ def escape_for_glob(pathname):
     <https://hg.python.org/cpython/file/3.4/Lib/glob.py>
     """
     # Escaping is done by wrapping any of "*?[" between square brackets.
-    # Metacharacters do not work in the drive part and shouldn't be escaped.
+    # Metacharacters do not work in the drive part and should
+    # not be escaped there.
     drive, pathname = os.path.splitdrive(pathname)
     pathname = PRX_GLOB_MAGIC.sub(IN_SQUARE_BRACKETS, pathname)
     return drive + pathname
@@ -127,8 +129,8 @@ def print_directory_tracklist(given_directory):
 def print_file_tracklist(given_file):
     """Output the file’s audio data as a tracklist line"""
     given_file = to_unicode(given_file)
-    shortened_filename = \
-        os.path.join(ELLIPSIS, os.path.basename(given_file))
+    shortened_filename = os.path.join(ELLIPSIS,
+                                      os.path.basename(given_file))
     try:
         audio_data = taglib.File(given_file)
     except OSError as os_error:
@@ -136,7 +138,8 @@ def print_file_tracklist(given_file):
         # Simply log the error and ignore these files.
         logging.error(os_error)
         if os.path.isfile(given_file):
-            logging.info(MSG_UNSUPPORTED_TYPE.format(shortened_filename))
+            logging.info(
+                MSG_UNSUPPORTED_TYPE.format(shortened_filename))
         #
     else:
         # Check for missing tags.
@@ -146,17 +149,21 @@ def print_file_tracklist(given_file):
         missing_tags = []
         for single_tag in REQUIRED_TAGS:
             try:
-                output_tags[single_tag] = audio_data.tags[single_tag][:]
+                original_tag = audio_data.tags[single_tag]
             except KeyError:
                 output_tags[single_tag] = MISSING_TAG_PLACEHOLDER
                 missing_tags.append(single_tag)
             else:
+                # Read only the first track number,
+                # but concatenate multiple entries in the other tags
+                # if necessary.
                 if single_tag == TAG_TRACK_NUMBER:
-                    output_tags[single_tag] = PRX_TRACKS_TOTAL.sub(
-                        EMPTY, output_tags[single_tag][FIRST_INDEX])
+                    output_tags[single_tag] = \
+                        PRX_TRACKS_TOTAL.sub(EMPTY,
+                                             original_tag[FIRST_INDEX])
                 else:
-                    output_tags[single_tag] = SEPARATOR.join(
-                        output_tags[single_tag])
+                    output_tags[single_tag] = \
+                        SEPARATOR.join(original_tag)
                 #
             #
         try:
@@ -227,5 +234,5 @@ if __name__ == '__main__':
     sys.exit(RC_OK)
 
 
-# vim: fileencoding=utf-8 ts=4 sts=4 sw=4 expandtab autoindent syntax=python:
+# vim: fileencoding=utf-8 ts=4 sts=4 sw=4 ai expandtab syntax=python:
 
