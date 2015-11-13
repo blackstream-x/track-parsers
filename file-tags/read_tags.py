@@ -32,7 +32,7 @@ import sys
 import taglib
 
 
-__version__ = '0.3'
+__version__ = '0.4'
 
 
 # Disable some pylint messages
@@ -86,8 +86,8 @@ FS_AUDIO_LENGTH = u'{0:02d}:{1:02d}'
 FS_DICT_PLACEHOLDER = u'{{0[{0}]}}'
 FS_TRACK = u'{0}. {1} – {2} ({3})'.format(
     FS_DICT_PLACEHOLDER.format(TAG_TRACK_NUMBER),
-    FS_DICT_PLACEHOLDER.format(TAG_ARTIST),
     FS_DICT_PLACEHOLDER.format(TAG_TITLE),
+    FS_DICT_PLACEHOLDER.format(TAG_ARTIST),
     FS_DICT_PLACEHOLDER.format(TAG_LENGTH))
 
 
