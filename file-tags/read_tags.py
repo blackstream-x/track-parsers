@@ -32,7 +32,7 @@ import sys
 import taglib
 
 
-__version__ = '0.4'
+__version__ = '0.5'
 
 
 # Disable some pylint messages
@@ -51,6 +51,7 @@ FILE_ARGUMENT_HELP = 'Files or directories to read audio tags from'
 FILE_ARGUMENT_NAME = 'File or Directory'
 FIRST_INDEX = 0
 IN_SQUARE_BRACKETS = r'[\1]'
+LATIN1 = 'latin-1'
 LOG_MESSAGE_FORMAT = '%(levelname)-8s | %(message)s'
 MISSING_TAG_PLACEHOLDER = u'({0})'.format(ELLIPSIS)
 MSG_HIT_ENTER = '\nPlease hit enter to close the window: '
@@ -94,6 +95,13 @@ FS_TRACK = u'{0}. {1} – {2} ({3})'.format(
 #
 # Function definitions
 #
+
+
+def __avoid_latin_1(text):
+    """Re-en-and -decode unicode that had been
+    misinterpreted as latin-1 in its original encoding by pytaglib
+    """
+    return text.encode(LATIN1).decode(UTF8)
 
 
 def audio_length(seconds):
@@ -162,8 +170,15 @@ def print_file_tracklist(given_file):
                         PRX_TRACKS_TOTAL.sub(EMPTY,
                                              original_tag[FIRST_INDEX])
                 else:
+                    fixed_tags = []
+                    for tag_part in original_tag:
+                        try:
+                            fixed_tags.append(__avoid_latin_1(tag_part))
+                        except UnicodeError:
+                           fixed_tags.append(tag_part)
+                        #
                     output_tags[single_tag] = \
-                        SEPARATOR.join(original_tag)
+                        SEPARATOR.join(fixed_tags)
                 #
             #
         try:
