@@ -32,7 +32,7 @@ import sys
 import taglib
 
 
-__version__ = '0.5'
+__version__ = '0.5.1'
 
 
 # Disable some pylint messages
@@ -175,7 +175,7 @@ def print_file_tracklist(given_file):
                         try:
                             fixed_tags.append(__avoid_latin_1(tag_part))
                         except UnicodeError:
-                           fixed_tags.append(tag_part)
+                            fixed_tags.append(tag_part)
                         #
                     output_tags[single_tag] = \
                         SEPARATOR.join(fixed_tags)
