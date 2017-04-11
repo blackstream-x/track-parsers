@@ -32,7 +32,7 @@ import sys
 import taglib
 
 
-__version__ = '0.5.1'
+__version__ = '0.5.2'
 
 
 # Disable some pylint messages
@@ -75,22 +75,29 @@ PRX_TRACKS_TOTAL = re.compile(r'/.*')
 #
 # Tag names as provided by the taglib module
 TAG_TRACK_NUMBER = 'TRACKNUMBER'
+TAG_ALBUM = 'ALBUM'
+TAG_ALBUMARTIST = 'ALBUMARTIST'
 TAG_ARTIST = 'ARTIST'
 TAG_TITLE = 'TITLE'
 TAG_LENGTH = 'length'
-REQUIRED_TAGS = (TAG_TRACK_NUMBER, TAG_ARTIST, TAG_TITLE)
+REQUIRED_TAGS_BASE = (TAG_TRACK_NUMBER, TAG_ARTIST, TAG_TITLE)
+REQUIRED_TAGS_COMPLETE = REQUIRED_TAGS_BASE + (TAG_ALBUM, TAG_ALBUMARTIST)
 
 #
 # Format strings
 FS_0 = u'{0}'
 FS_AUDIO_LENGTH = u'{0:02d}:{1:02d}'
 FS_DICT_PLACEHOLDER = u'{{0[{0}]}}'
-FS_TRACK = u'{0}. {1} – {2} ({3})'.format(
+FS_TRACK_BASE = u'{0}. {1} – {2} ({3})'.format(
     FS_DICT_PLACEHOLDER.format(TAG_TRACK_NUMBER),
     FS_DICT_PLACEHOLDER.format(TAG_TITLE),
     FS_DICT_PLACEHOLDER.format(TAG_ARTIST),
     FS_DICT_PLACEHOLDER.format(TAG_LENGTH))
 
+FS_TRACK_COMPLETE = u'{0} – {1}\n\n{2}'.format(
+    FS_DICT_PLACEHOLDER.format(TAG_ALBUMARTIST),
+    FS_DICT_PLACEHOLDER.format(TAG_ALBUM),
+    FS_TRACK_BASE)
 
 #
 # Function definitions
@@ -128,13 +135,15 @@ def print_directory_tracklist(given_directory):
     Files will be sorted by name before.
     """
     given_directory = to_unicode(given_directory)
+    first_run = True
     for single_file in sorted(glob.glob(os.path.join(
             escape_for_glob(given_directory), ALL_FILES))):
-        print_file_tracklist(single_file)
+        print_file_tracklist(single_file, show_release_info=first_run)
+        first_run = False
     #
 
 
-def print_file_tracklist(given_file):
+def print_file_tracklist(given_file, show_release_info=True):
     """Output the file’s audio data as a tracklist line"""
     given_file = to_unicode(given_file)
     shortened_filename = os.path.join(ELLIPSIS,
@@ -153,9 +162,16 @@ def print_file_tracklist(given_file):
         # Check for missing tags.
         # If tags are missing, log a warning message
         # and use the defined placeholder for the missing tags
+        if show_release_info:
+            required_tags = REQUIRED_TAGS_COMPLETE
+            fs_track = FS_TRACK_COMPLETE
+        else:
+            required_tags = REQUIRED_TAGS_BASE
+            fs_track = FS_TRACK_BASE
+        #
         output_tags = {}
         missing_tags = []
-        for single_tag in REQUIRED_TAGS:
+        for single_tag in required_tags:
             try:
                 original_tag = audio_data.tags[single_tag]
             except KeyError:
@@ -177,19 +193,22 @@ def print_file_tracklist(given_file):
                         except UnicodeError:
                             fixed_tags.append(tag_part)
                         #
+                    #
                     output_tags[single_tag] = \
                         SEPARATOR.join(fixed_tags)
                 #
             #
+        #
         try:
             output_tags[TAG_LENGTH] = audio_length(audio_data.length)
         except AttributeError:
             output_tags[TAG_LENGTH] = ELLIPSIS
             missing_tags.append(TAG_LENGTH)
+        #
         if missing_tags:
             logging.warning(MSG_TAGS_MISSING.format(shortened_filename,
                                                     missing_tags))
-        print(FS_TRACK.format(output_tags))
+        print(fs_track.format(output_tags))
     #
 
 
